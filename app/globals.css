@@ -1,0 +1,156 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 224 71.4% 4.1%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 71.4% 4.1%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71.4% 4.1%;
+    --primary: 220.9 39.3% 11%;
+    --primary-foreground: 210 20% 98%;
+    --secondary: 220 14.3% 95.9%;
+    --secondary-foreground: 220.9 39.3% 11%;
+    --muted: 220 14.3% 95.9%;
+    --muted-foreground: 220 8.9% 46.1%;
+    --accent: 220 14.3% 95.9%;
+    --accent-foreground: 220.9 39.3% 11%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 224 71.4% 4.1%;
+    --radius: 0.5rem;
+
+    /* Custom colors */
+    --success: 142.1 76.2% 36.3%;
+    --success-foreground: 355.7 100% 97.3%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 48 96% 89%;
+    --info: 214 100% 50%;
+    --info-foreground: 210 20% 98%;
+    --income: 142.1 76.2% 36.3%;
+    --expense: 0 84.2% 60.2%;
+  }
+
+  .dark {
+    --background: 224 71.4% 4.1%;
+    --foreground: 210 20% 98%;
+    --card: 224 71.4% 4.1%;
+    --card-foreground: 210 20% 98%;
+    --popover: 224 71.4% 4.1%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 210 20% 98%;
+    --primary-foreground: 220.9 39.3% 11%;
+    --secondary: 215 27.9% 16.9%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 215 27.9% 16.9%;
+    --muted-foreground: 217.9 10.6% 64.9%;
+    --accent: 215 27.9% 16.9%;
+    --accent-foreground: 210 20% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 215 27.9% 16.9%;
+    --input: 215 27.9% 16.9%;
+    --ring: 216 12.2% 83.9%;
+
+    /* Custom colors */
+    --success: 142.1 70.6% 45.3%;
+    --success-foreground: 144.9 80.4% 10%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 48 96% 89%;
+    --info: 214 100% 50%;
+    --info-foreground: 210 20% 98%;
+    --income: 142.1 70.6% 45.3%;
+    --expense: 0 62.8% 30.6%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Custom utility classes */
+.income-text {
+  @apply text-emerald-600 dark:text-emerald-500;
+}
+
+.expense-text {
+  @apply text-red-600 dark:text-red-500;
+}
+
+.income-bg {
+  @apply bg-emerald-100 dark:bg-emerald-900/30;
+}
+
+.expense-bg {
+  @apply bg-red-100 dark:bg-red-900/30;
+}
+
+.card-hover {
+  @apply transition-all duration-200 hover:shadow-md hover:border-primary/20;
+}
+
+.dashboard-card {
+  @apply border-0 shadow-sm bg-card;
+}
+
+.stats-card {
+  @apply border-0 shadow-sm bg-gradient-to-br;
+}
+
+.income-stats-card {
+  @apply from-emerald-50 to-emerald-100 dark:from-emerald-950/40 dark:to-emerald-900/30;
+}
+
+.expense-stats-card {
+  @apply from-red-50 to-red-100 dark:from-red-950/40 dark:to-red-900/30;
+}
+
+.balance-stats-card {
+  @apply from-blue-50 to-blue-100 dark:from-blue-950/40 dark:to-blue-900/30;
+}
+
+.savings-stats-card {
+  @apply from-purple-50 to-purple-100 dark:from-purple-950/40 dark:to-purple-900/30;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-muted;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/30 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/50;
+}
