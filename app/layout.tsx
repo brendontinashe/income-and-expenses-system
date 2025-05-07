@@ -1,12 +1,7 @@
 import type React from "react"
-import type { Metadata } from "next"
-import { Inter } from "next/font/google"
-import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
+import ClientRootLayout from "./clientLayout"
 
-const inter = Inter({ subsets: ["latin"] })
-
-export const metadata: Metadata = {
+export const metadata = {
   title: "Income & Expenditure System",
   description: "Track and manage your income and expenses",
     generator: 'v0.dev'
@@ -17,13 +12,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  return (
-    <html lang="en">
-      <body className={inter.className}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          {children}
-        </ThemeProvider>
-      </body>
-    </html>
-  )
+  return <ClientRootLayout>{children}</ClientRootLayout>
 }
+
+
+import './globals.css'

@@ -50,6 +50,14 @@ export function SidebarNav({ className }: SidebarNavProps) {
       bgColor: "bg-slate-100 dark:bg-slate-800",
     },
     {
+      href: "/",
+      label: "Home",
+      active: pathname === "/",
+      icon: <Home className="h-5 w-5" />,
+      color: "text-slate-500",
+      bgColor: "bg-slate-100 dark:bg-slate-800",
+    },
+    {
       href: "/income",
       label: "Income",
       active: pathname === "/income" || pathname.startsWith("/income/"),
