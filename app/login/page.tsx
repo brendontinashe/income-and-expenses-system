@@ -8,39 +8,81 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DollarSign, Loader2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { useToast } from "@/hooks/use-toast"
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("")
+  const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [rememberMe, setRememberMe] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { toast } = useToast()
+
+  // Check if user just registered
+  const justRegistered = searchParams.get("registered") === "true"
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setIsLoading(true)
 
-    // This would be replaced with actual API call
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const formData = new FormData()
+      formData.append("username", username)
+      formData.append("password", password)
+
+      const response = await fetch("http://localhost:8000/api/auth/token", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.detail || `Login failed with status ${response.status}`)
+      }
+
+      const data = await response.json()
+
+      // Store the token
+      localStorage.setItem("auth_token", data.access_token)
+
+      // Store remember me preference
+      if (rememberMe) {
+        localStorage.setItem("remember_user", username)
+      } else {
+        localStorage.removeItem("remember_user")
+      }
 
       // Redirect to dashboard on success
+      toast({
+        title: "Login successful",
+        description: "Welcome back to FinanceTrack!",
+      })
+
       router.push("/dashboard")
-    } catch (error) {
-      setError("Invalid email or password. Please try again.")
+    } catch (error: any) {
+      setError(error.message || "Invalid username or password. Please try again.")
       console.error("Login failed:", error)
     } finally {
       setIsLoading(false)
     }
   }
+
+  // Check for remembered user
+  useState(() => {
+    const rememberedUser = localStorage.getItem("remember_user")
+    if (rememberedUser) {
+      setUsername(rememberedUser)
+      setRememberMe(true)
+    }
+  })
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -66,16 +108,22 @@ export default function LoginPage() {
                 </Alert>
               )}
 
+              {justRegistered && (
+                <Alert>
+                  <AlertDescription className="text-emerald-600">
+                    Registration successful! Please log in with your credentials.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="username">Username or Email</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="name@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   required
-                  autoComplete="email"
+                  autoComplete="username"
                   autoFocus
                 />
               </div>

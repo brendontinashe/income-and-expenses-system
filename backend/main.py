@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.routers import income, expenses, budgets, categories, users, settings
+from backend.routers import income, expenses, budgets, categories, users, settings, auth, dashboard
 
 app = FastAPI(title="Finance Tracker API", description="Backend API for the Finance Tracker application")
 
@@ -14,6 +14,8 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(auth.router, prefix="/api", tags=["auth"])
+app.include_router(dashboard.router, prefix="/api", tags=["dashboard"])
 app.include_router(income.router, prefix="/api", tags=["income"])
 app.include_router(expenses.router, prefix="/api", tags=["expenses"])
 app.include_router(budgets.router, prefix="/api", tags=["budgets"])

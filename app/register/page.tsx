@@ -15,6 +15,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 
 export default function RegisterPage() {
   const [name, setName] = useState("")
+  const [username, setUsername] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -33,15 +34,29 @@ export default function RegisterPage() {
 
     setIsLoading(true)
 
-    // This would be replaced with actual API call
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const response = await fetch("http://localhost:8000/api/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username,
+          email,
+          password,
+          full_name: name,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || `Registration failed with status ${response.status}`)
+      }
 
       // Redirect to login on success
       router.push("/login?registered=true")
-    } catch (error) {
-      setError("Registration failed. Please try again.")
+    } catch (error: any) {
+      setError(error.message || "Registration failed. Please try again.")
       console.error("Registration failed:", error)
     } finally {
       setIsLoading(false)
@@ -83,6 +98,16 @@ export default function RegisterPage() {
                   onChange={(e) => setName(e.target.value)}
                   required
                   autoFocus
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="username">Username</Label>
+                <Input
+                  id="username"
+                  placeholder="johndoe"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
                 />
               </div>
               <div className="space-y-2">

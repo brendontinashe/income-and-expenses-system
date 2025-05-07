@@ -9,70 +9,82 @@ import {
   DollarSign,
   Percent,
   CreditCard,
-  TrendingUp,
   Calendar,
   AlertCircle,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import Image from "next/image"
-
-// Mock chart components
-const BarChart = () => (
-  <div className="h-[300px] w-full flex items-center justify-center border rounded-md bg-muted/30">
-    <TrendingUp className="h-8 w-8 text-muted-foreground" />
-  </div>
-)
-
-const LineChart = () => (
-  <div className="h-[300px] w-full flex items-center justify-center border rounded-md bg-muted/30">
-    <TrendingUp className="h-8 w-8 text-muted-foreground" />
-  </div>
-)
-
-const PieChart = () => (
-  <div className="h-[300px] w-full flex items-center justify-center border rounded-md bg-muted/30">
-    <TrendingUp className="h-8 w-8 text-muted-foreground" />
-  </div>
-)
+import { useToast } from "@/hooks/use-toast"
+import { BarChart, LineChart, PieChart } from "@/components/ui/chart"
 
 export default function DashboardPage() {
+  const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(true)
+  const [dashboardData, setDashboardData] = useState<any>(null)
+  const [period, setPeriod] = useState("month")
 
   useEffect(() => {
-    // Simulate loading data without showing toast
-    const timer = setTimeout(() => {
+    fetchDashboardData()
+  }, [period])
+
+  const fetchDashboardData = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch(`http://localhost:8000/api/dashboard?period=${period}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch dashboard data")
+      }
+
+      const data = await response.json()
+      setDashboardData(data)
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load dashboard data. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
       setIsLoading(false)
-    }, 1000)
+    }
+  }
 
-    return () => clearTimeout(timer)
-  }, [])
+  // Prepare chart data
+  const prepareChartData = () => {
+    if (!dashboardData || !dashboardData.monthly_data) return null
 
-  // Mock data for recent transactions
-  const recentTransactions = [
-    { type: "income", category: "Salary", amount: 5000, date: "2023-04-01" },
-    { type: "expense", category: "Rent", amount: 1200, date: "2023-04-02" },
-    { type: "expense", category: "Groceries", amount: 250, date: "2023-04-05" },
-    { type: "income", category: "Freelance", amount: 800, date: "2023-04-10" },
-    { type: "expense", category: "Utilities", amount: 180, date: "2023-04-15" },
-  ]
+    // Convert the monthly data object to an array for the chart
+    const chartData = Object.entries(dashboardData.monthly_data).map(([date, values]: [string, any]) => ({
+      date,
+      income: values.income,
+      expense: values.expense,
+      net: values.net,
+    }))
 
-  // Mock data for income categories
-  const incomeCategories = [
-    { name: "Salary", percentage: 80 },
-    { name: "Freelance", percentage: 15 },
-    { name: "Investments", percentage: 5 },
-  ]
+    // Sort by date
+    chartData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-  // Mock data for expense categories
-  const expenseCategories = [
-    { name: "Housing", percentage: 40 },
-    { name: "Food", percentage: 25 },
-    { name: "Transportation", percentage: 15 },
-    { name: "Utilities", percentage: 10 },
-    { name: "Entertainment", percentage: 10 },
-  ]
+    return chartData
+  }
+
+  // Prepare pie chart data for income and expenses by category
+  const preparePieChartData = (type: "income" | "expenses") => {
+    if (!dashboardData) return []
+
+    const data = type === "income" ? dashboardData.income_by_category : dashboardData.expenses_by_category
+
+    return Object.entries(data || {}).map(([name, value]: [string, any]) => ({
+      name,
+      value,
+    }))
+  }
 
   // Skeleton loader for cards
   const CardSkeleton = () => (
@@ -101,19 +113,34 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
-        <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-        <AlertTitle className="text-amber-800 dark:text-amber-300">Upcoming Payment</AlertTitle>
-        <AlertDescription className="text-amber-700 dark:text-amber-400">
-          You have a rent payment of $1,200 due in 3 days.{" "}
-          <Link
-            href="/expenses/add"
-            className="font-medium underline underline-offset-4 text-amber-800 dark:text-amber-300"
-          >
-            Record payment
-          </Link>
-        </AlertDescription>
-      </Alert>
+      {!isLoading &&
+        dashboardData?.recent_transactions?.length > 0 &&
+        dashboardData.recent_transactions.some(
+          (t: any) => t.type === "expense" && t.description?.toLowerCase().includes("rent"),
+        ) && (
+          <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
+            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            <AlertTitle className="text-amber-800 dark:text-amber-300">Upcoming Payment</AlertTitle>
+            <AlertDescription className="text-amber-700 dark:text-amber-400">
+              You have a rent payment due soon.{" "}
+              <Link
+                href="/expenses/add"
+                className="font-medium underline underline-offset-4 text-amber-800 dark:text-amber-300"
+              >
+                Record payment
+              </Link>
+            </AlertDescription>
+          </Alert>
+        )}
+
+      <div className="flex gap-4 mb-4">
+        <Button variant={period === "month" ? "default" : "outline"} onClick={() => setPeriod("month")} size="sm">
+          This Month
+        </Button>
+        <Button variant={period === "year" ? "default" : "outline"} onClick={() => setPeriod("year")} size="sm">
+          This Year
+        </Button>
+      </div>
 
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList className="bg-slate-100 dark:bg-slate-800">
@@ -139,12 +166,12 @@ export default function DashboardPage() {
                   <CardSkeleton />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold">$45,231.89</div>
+                    <div className="text-2xl font-bold">${dashboardData?.income_total.toFixed(2)}</div>
                     <p className="text-xs text-muted-foreground">
                       <span className="text-emerald-600 dark:text-emerald-500 flex items-center">
-                        +20.1% <ArrowUpRight className="h-4 w-4 ml-1" />
+                        <ArrowUpRight className="h-4 w-4 ml-1" />
                       </span>{" "}
-                      from last month
+                      {period === "month" ? "this month" : "this year"}
                     </p>
                   </>
                 )}
@@ -160,12 +187,12 @@ export default function DashboardPage() {
                   <CardSkeleton />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold">$12,234.59</div>
+                    <div className="text-2xl font-bold">${dashboardData?.expense_total.toFixed(2)}</div>
                     <p className="text-xs text-muted-foreground">
                       <span className="text-red-600 dark:text-red-500 flex items-center">
-                        +4.3% <ArrowUpRight className="h-4 w-4 ml-1" />
+                        <ArrowUpRight className="h-4 w-4 ml-1" />
                       </span>{" "}
-                      from last month
+                      {period === "month" ? "this month" : "this year"}
                     </p>
                   </>
                 )}
@@ -181,12 +208,18 @@ export default function DashboardPage() {
                   <CardSkeleton />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold">$32,997.30</div>
+                    <div className="text-2xl font-bold">${dashboardData?.balance.toFixed(2)}</div>
                     <p className="text-xs text-muted-foreground">
-                      <span className="text-emerald-600 dark:text-emerald-500 flex items-center">
-                        +10.2% <ArrowUpRight className="h-4 w-4 ml-1" />
+                      <span
+                        className={`${dashboardData?.balance >= 0 ? "text-emerald-600 dark:text-emerald-500" : "text-red-600 dark:text-red-500"} flex items-center`}
+                      >
+                        {dashboardData?.balance >= 0 ? (
+                          <ArrowUpRight className="h-4 w-4 ml-1" />
+                        ) : (
+                          <ArrowDownRight className="h-4 w-4 ml-1" />
+                        )}
                       </span>{" "}
-                      from last month
+                      net balance
                     </p>
                   </>
                 )}
@@ -202,12 +235,18 @@ export default function DashboardPage() {
                   <CardSkeleton />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold">73%</div>
+                    <div className="text-2xl font-bold">{dashboardData?.savings_rate.toFixed(0)}%</div>
                     <p className="text-xs text-muted-foreground">
-                      <span className="text-emerald-600 dark:text-emerald-500 flex items-center">
-                        +5.2% <ArrowUpRight className="h-4 w-4 ml-1" />
+                      <span
+                        className={`${dashboardData?.savings_rate >= 0 ? "text-emerald-600 dark:text-emerald-500" : "text-red-600 dark:text-red-500"} flex items-center`}
+                      >
+                        {dashboardData?.savings_rate >= 0 ? (
+                          <ArrowUpRight className="h-4 w-4 ml-1" />
+                        ) : (
+                          <ArrowDownRight className="h-4 w-4 ml-1" />
+                        )}
                       </span>{" "}
-                      from last month
+                      of income saved
                     </p>
                   </>
                 )}
@@ -238,37 +277,53 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {recentTransactions.map((transaction, i) => (
-                      <div key={i} className="flex items-center justify-between border-b pb-2">
-                        <div className="flex items-center">
-                          <div
-                            className={`mr-4 rounded-full p-2 ${
-                              transaction.type === "income" ? "income-bg" : "expense-bg"
-                            }`}
-                          >
-                            {transaction.type === "income" ? (
-                              <ArrowUpRight className="h-4 w-4 income-text" />
-                            ) : (
-                              <ArrowDownRight className="h-4 w-4 expense-text" />
-                            )}
+                    {dashboardData?.recent_transactions?.length > 0 ? (
+                      <>
+                        {dashboardData.recent_transactions.map((transaction: any, i: number) => (
+                          <div key={i} className="flex items-center justify-between border-b pb-2">
+                            <div className="flex items-center">
+                              <div
+                                className={`mr-4 rounded-full p-2 ${
+                                  transaction.type === "income" ? "income-bg" : "expense-bg"
+                                }`}
+                              >
+                                {transaction.type === "income" ? (
+                                  <ArrowUpRight className="h-4 w-4 income-text" />
+                                ) : (
+                                  <ArrowDownRight className="h-4 w-4 expense-text" />
+                                )}
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium">{transaction.category_name}</p>
+                                <p className="text-xs text-muted-foreground">{transaction.date}</p>
+                              </div>
+                            </div>
+                            <div
+                              className={`text-sm font-medium ${
+                                transaction.type === "income" ? "income-text" : "expense-text"
+                              }`}
+                            >
+                              {transaction.type === "income" ? "+" : "-"}${transaction.amount.toFixed(2)}
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm font-medium">{transaction.category}</p>
-                            <p className="text-xs text-muted-foreground">{transaction.date}</p>
-                          </div>
-                        </div>
-                        <div
-                          className={`text-sm font-medium ${
-                            transaction.type === "income" ? "income-text" : "expense-text"
-                          }`}
-                        >
-                          {transaction.type === "income" ? "+" : "-"}${transaction.amount.toFixed(2)}
+                        ))}
+                        <Button variant="outline" size="sm" className="w-full" asChild>
+                          <Link href="/reports">View all transactions</Link>
+                        </Button>
+                      </>
+                    ) : (
+                      <div className="text-center py-8">
+                        <p className="text-muted-foreground">No transactions found</p>
+                        <div className="mt-4 flex gap-2 justify-center">
+                          <Button asChild size="sm" variant="outline">
+                            <Link href="/income/add">Add Income</Link>
+                          </Button>
+                          <Button asChild size="sm" variant="outline">
+                            <Link href="/expenses/add">Add Expense</Link>
+                          </Button>
                         </div>
                       </div>
-                    ))}
-                    <Button variant="outline" size="sm" className="w-full" asChild>
-                      <Link href="/reports">View all transactions</Link>
-                    </Button>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -314,37 +369,49 @@ export default function DashboardPage() {
                   <div className="space-y-4">
                     <div>
                       <h4 className="text-sm font-medium mb-2">Income</h4>
-                      {incomeCategories.map((category, i) => (
-                        <div key={i} className="mb-2">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm">{category.name}</span>
-                            <span className="text-sm">{category.percentage}%</span>
-                          </div>
-                          <div className="w-full bg-muted rounded-full h-2">
-                            <div
-                              className="bg-emerald-500 h-2 rounded-full"
-                              style={{ width: `${category.percentage}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                      ))}
+                      {Object.entries(dashboardData?.income_by_category || {}).length > 0 ? (
+                        Object.entries(dashboardData?.income_by_category || {}).map(
+                          ([category, amount]: [string, any], i) => (
+                            <div key={i} className="mb-2">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-sm">{category}</span>
+                                <span className="text-sm">${amount.toFixed(2)}</span>
+                              </div>
+                              <div className="w-full bg-muted rounded-full h-2">
+                                <div
+                                  className="bg-emerald-500 h-2 rounded-full"
+                                  style={{ width: `${(amount / dashboardData?.income_total) * 100}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          ),
+                        )
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No income data available</p>
+                      )}
                     </div>
                     <div>
                       <h4 className="text-sm font-medium mb-2">Expenses</h4>
-                      {expenseCategories.map((category, i) => (
-                        <div key={i} className="mb-2">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm">{category.name}</span>
-                            <span className="text-sm">{category.percentage}%</span>
-                          </div>
-                          <div className="w-full bg-muted rounded-full h-2">
-                            <div
-                              className="bg-red-500 h-2 rounded-full"
-                              style={{ width: `${category.percentage}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                      ))}
+                      {Object.entries(dashboardData?.expenses_by_category || {}).length > 0 ? (
+                        Object.entries(dashboardData?.expenses_by_category || {}).map(
+                          ([category, amount]: [string, any], i) => (
+                            <div key={i} className="mb-2">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-sm">{category}</span>
+                                <span className="text-sm">${amount.toFixed(2)}</span>
+                              </div>
+                              <div className="w-full bg-muted rounded-full h-2">
+                                <div
+                                  className="bg-red-500 h-2 rounded-full"
+                                  style={{ width: `${(amount / dashboardData?.expense_total) * 100}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          ),
+                        )
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No expense data available</p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -357,17 +424,25 @@ export default function DashboardPage() {
             <Card className="col-span-2 dashboard-card">
               <CardHeader>
                 <CardTitle>Monthly Overview</CardTitle>
-                <CardDescription>Your income and expenses for the past 6 months</CardDescription>
+                <CardDescription>Your income and expenses for the period</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="relative h-[300px] w-full">
-                  <Image
-                    src="/placeholder.svg?height=300&width=600&text=Monthly+Overview+Chart"
-                    alt="Monthly Overview Chart"
-                    fill
-                    className="object-contain"
-                  />
-                </div>
+                {isLoading ? (
+                  <div className="h-[300px] w-full flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <div className="chart-container">
+                    <BarChart
+                      data={prepareChartData() || []}
+                      index="date"
+                      categories={["income", "expense"]}
+                      colors={["emerald", "red"]}
+                      valueFormatter={(value) => `$${value.toFixed(2)}`}
+                      yAxisWidth={60}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
             <Card className="dashboard-card">
@@ -376,14 +451,24 @@ export default function DashboardPage() {
                 <CardDescription>Breakdown of your finances</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="relative h-[300px] w-full">
-                  <Image
-                    src="/placeholder.svg?height=300&width=300&text=Pie+Chart"
-                    alt="Income vs Expenses Pie Chart"
-                    fill
-                    className="object-contain"
-                  />
-                </div>
+                {isLoading ? (
+                  <div className="h-[300px] w-full flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <div className="chart-container">
+                    <PieChart
+                      data={[
+                        { name: "Income", value: dashboardData?.income_total || 0 },
+                        { name: "Expenses", value: dashboardData?.expense_total || 0 },
+                      ]}
+                      index="name"
+                      valueFormatter={(value) => `$${value.toFixed(2)}`}
+                      category="value"
+                      colors={["emerald", "red"]}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
             <Card className="col-span-3 dashboard-card">
@@ -392,14 +477,22 @@ export default function DashboardPage() {
                 <CardDescription>Track your financial growth over time</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="relative h-[300px] w-full">
-                  <Image
-                    src="/placeholder.svg?height=300&width=900&text=Financial+Trends+Chart"
-                    alt="Financial Trends Chart"
-                    fill
-                    className="object-contain"
-                  />
-                </div>
+                {isLoading ? (
+                  <div className="h-[300px] w-full flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <div className="chart-container">
+                    <LineChart
+                      data={prepareChartData() || []}
+                      index="date"
+                      categories={["net"]}
+                      colors={["blue"]}
+                      valueFormatter={(value) => `$${value.toFixed(2)}`}
+                      yAxisWidth={60}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
