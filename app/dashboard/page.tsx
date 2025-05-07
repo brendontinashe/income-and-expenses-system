@@ -12,17 +12,23 @@ import {
   Calendar,
   AlertCircle,
   Loader2,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 import { BarChart, LineChart, PieChart } from "@/components/ui/chart"
+import { api, type DashboardData } from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
+import { format, parseISO, isAfter, addDays } from "date-fns"
 
 export default function DashboardPage() {
   const { toast } = useToast()
+  const { user } = useAuth()
   const [isLoading, setIsLoading] = useState(true)
-  const [dashboardData, setDashboardData] = useState<any>(null)
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [period, setPeriod] = useState("month")
 
   useEffect(() => {
@@ -32,17 +38,7 @@ export default function DashboardPage() {
   const fetchDashboardData = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch(`http://localhost:8000/api/dashboard?period=${period}`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch dashboard data")
-      }
-
-      const data = await response.json()
+      const data = await api.getDashboardData(period as any)
       setDashboardData(data)
     } catch (error) {
       console.error("Error fetching dashboard data:", error)
@@ -56,34 +52,59 @@ export default function DashboardPage() {
     }
   }
 
+  // Find upcoming rent payment
+  const findUpcomingRentPayment = () => {
+    if (!dashboardData?.recent_transactions) return null
+
+    const rentTransactions = dashboardData.recent_transactions.filter(
+      (t) => t.type === "expense" && t.description?.toLowerCase().includes("rent"),
+    )
+
+    if (rentTransactions.length === 0) return null
+
+    // Get the most recent rent payment
+    const lastRentPayment = rentTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+
+    // Predict next payment (30 days after the last one)
+    const lastPaymentDate = parseISO(lastRentPayment.date)
+    const predictedNextPayment = addDays(lastPaymentDate, 30)
+
+    // If the predicted payment is in the next 7 days, show alert
+    const isUpcoming =
+      isAfter(predictedNextPayment, new Date()) && isAfter(addDays(new Date(), 7), predictedNextPayment)
+
+    if (isUpcoming) {
+      return {
+        amount: lastRentPayment.amount,
+        dueDate: format(predictedNextPayment, "MMM dd, yyyy"),
+      }
+    }
+
+    return null
+  }
+
+  const upcomingRent = findUpcomingRentPayment()
+
   // Prepare chart data
   const prepareChartData = () => {
-    if (!dashboardData || !dashboardData.monthly_data) return null
+    if (!dashboardData || !dashboardData.monthly_data) return []
 
     // Convert the monthly data object to an array for the chart
     const chartData = Object.entries(dashboardData.monthly_data).map(([date, values]: [string, any]) => ({
-      date,
+      date: format(parseISO(date), "MMM dd"),
       income: values.income,
       expense: values.expense,
       net: values.net,
     }))
 
     // Sort by date
-    chartData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    chartData.sort((a, b) => {
+      const dateA = parseISO(a.date)
+      const dateB = parseISO(b.date)
+      return dateA.getTime() - dateB.getTime()
+    })
 
     return chartData
-  }
-
-  // Prepare pie chart data for income and expenses by category
-  const preparePieChartData = (type: "income" | "expenses") => {
-    if (!dashboardData) return []
-
-    const data = type === "income" ? dashboardData.income_by_category : dashboardData.expenses_by_category
-
-    return Object.entries(data || {}).map(([name, value]: [string, any]) => ({
-      name,
-      value,
-    }))
   }
 
   // Skeleton loader for cards
@@ -98,7 +119,10 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between gap-4 md:items-center">
-        <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+          {user && <p className="text-muted-foreground">Welcome back, {user.full_name || user.username}</p>}
+        </div>
         <div className="flex gap-2">
           <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
             <Link href="/income/add">Add Income</Link>
@@ -113,44 +137,67 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {!isLoading &&
-        dashboardData?.recent_transactions?.length > 0 &&
-        dashboardData.recent_transactions.some(
-          (t: any) => t.type === "expense" && t.description?.toLowerCase().includes("rent"),
-        ) && (
-          <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
-            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-            <AlertTitle className="text-amber-800 dark:text-amber-300">Upcoming Payment</AlertTitle>
-            <AlertDescription className="text-amber-700 dark:text-amber-400">
-              You have a rent payment due soon.{" "}
-              <Link
-                href="/expenses/add"
-                className="font-medium underline underline-offset-4 text-amber-800 dark:text-amber-300"
-              >
-                Record payment
-              </Link>
-            </AlertDescription>
-          </Alert>
-        )}
+      {upcomingRent && (
+        <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
+          <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <AlertTitle className="text-amber-800 dark:text-amber-300">Upcoming Payment</AlertTitle>
+          <AlertDescription className="text-amber-700 dark:text-amber-400">
+            You have a rent payment of ${upcomingRent.amount.toFixed(2)} due on {upcomingRent.dueDate}.{" "}
+            <Link
+              href="/expenses/add"
+              className="font-medium underline underline-offset-4 text-amber-800 dark:text-amber-300"
+            >
+              Record payment
+            </Link>
+          </AlertDescription>
+        </Alert>
+      )}
 
-      <div className="flex gap-4 mb-4">
-        <Button variant={period === "month" ? "default" : "outline"} onClick={() => setPeriod("month")} size="sm">
+      <div className="flex flex-wrap gap-4 mb-4">
+        <Button
+          variant={period === "month" ? "default" : "outline"}
+          onClick={() => setPeriod("month")}
+          size="sm"
+          className="rounded-full"
+        >
           This Month
         </Button>
-        <Button variant={period === "year" ? "default" : "outline"} onClick={() => setPeriod("year")} size="sm">
+        <Button
+          variant={period === "quarter" ? "default" : "outline"}
+          onClick={() => setPeriod("quarter")}
+          size="sm"
+          className="rounded-full"
+        >
+          This Quarter
+        </Button>
+        <Button
+          variant={period === "year" ? "default" : "outline"}
+          onClick={() => setPeriod("year")}
+          size="sm"
+          className="rounded-full"
+        >
           This Year
         </Button>
       </div>
 
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="bg-slate-100 dark:bg-slate-800">
-          <TabsTrigger value="overview" className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700">
+        <TabsList className="bg-slate-100 dark:bg-slate-800 p-1 rounded-full">
+          <TabsTrigger
+            value="overview"
+            className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 rounded-full"
+          >
             Overview
           </TabsTrigger>
-          <TabsTrigger value="analytics" className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700">
+          <TabsTrigger
+            value="analytics"
+            className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 rounded-full"
+          >
             Analytics
           </TabsTrigger>
-          <TabsTrigger value="calendar" className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700">
+          <TabsTrigger
+            value="calendar"
+            className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 rounded-full"
+          >
             Calendar
           </TabsTrigger>
         </TabsList>
@@ -166,12 +213,12 @@ export default function DashboardPage() {
                   <CardSkeleton />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold">${dashboardData?.income_total.toFixed(2)}</div>
+                    <div className="text-2xl font-bold">${dashboardData?.income_total.toFixed(2) || "0.00"}</div>
                     <p className="text-xs text-muted-foreground">
                       <span className="text-emerald-600 dark:text-emerald-500 flex items-center">
-                        <ArrowUpRight className="h-4 w-4 ml-1" />
+                        <TrendingUp className="h-4 w-4 mr-1" />
                       </span>{" "}
-                      {period === "month" ? "this month" : "this year"}
+                      {period === "month" ? "this month" : period === "quarter" ? "this quarter" : "this year"}
                     </p>
                   </>
                 )}
@@ -187,12 +234,12 @@ export default function DashboardPage() {
                   <CardSkeleton />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold">${dashboardData?.expense_total.toFixed(2)}</div>
+                    <div className="text-2xl font-bold">${dashboardData?.expense_total.toFixed(2) || "0.00"}</div>
                     <p className="text-xs text-muted-foreground">
                       <span className="text-red-600 dark:text-red-500 flex items-center">
-                        <ArrowUpRight className="h-4 w-4 ml-1" />
+                        <TrendingUp className="h-4 w-4 mr-1" />
                       </span>{" "}
-                      {period === "month" ? "this month" : "this year"}
+                      {period === "month" ? "this month" : period === "quarter" ? "this quarter" : "this year"}
                     </p>
                   </>
                 )}
@@ -208,18 +255,22 @@ export default function DashboardPage() {
                   <CardSkeleton />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold">${dashboardData?.balance.toFixed(2)}</div>
+                    <div className="text-2xl font-bold">${dashboardData?.balance.toFixed(2) || "0.00"}</div>
                     <p className="text-xs text-muted-foreground">
                       <span
                         className={`${dashboardData?.balance >= 0 ? "text-emerald-600 dark:text-emerald-500" : "text-red-600 dark:text-red-500"} flex items-center`}
                       >
                         {dashboardData?.balance >= 0 ? (
-                          <ArrowUpRight className="h-4 w-4 ml-1" />
+                          <TrendingUp className="h-4 w-4 mr-1" />
                         ) : (
-                          <ArrowDownRight className="h-4 w-4 ml-1" />
+                          <TrendingDown className="h-4 w-4 mr-1" />
                         )}
+                        {Math.abs(((dashboardData?.balance || 0) / (dashboardData?.income_total || 1)) * 100).toFixed(
+                          1,
+                        )}
+                        %
                       </span>{" "}
-                      net balance
+                      of income
                     </p>
                   </>
                 )}
@@ -235,15 +286,15 @@ export default function DashboardPage() {
                   <CardSkeleton />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold">{dashboardData?.savings_rate.toFixed(0)}%</div>
+                    <div className="text-2xl font-bold">{dashboardData?.savings_rate.toFixed(0) || "0"}%</div>
                     <p className="text-xs text-muted-foreground">
                       <span
                         className={`${dashboardData?.savings_rate >= 0 ? "text-emerald-600 dark:text-emerald-500" : "text-red-600 dark:text-red-500"} flex items-center`}
                       >
                         {dashboardData?.savings_rate >= 0 ? (
-                          <ArrowUpRight className="h-4 w-4 ml-1" />
+                          <TrendingUp className="h-4 w-4 mr-1" />
                         ) : (
-                          <ArrowDownRight className="h-4 w-4 ml-1" />
+                          <TrendingDown className="h-4 w-4 mr-1" />
                         )}
                       </span>{" "}
                       of income saved
@@ -279,7 +330,7 @@ export default function DashboardPage() {
                   <div className="space-y-4">
                     {dashboardData?.recent_transactions?.length > 0 ? (
                       <>
-                        {dashboardData.recent_transactions.map((transaction: any, i: number) => (
+                        {dashboardData.recent_transactions.map((transaction, i) => (
                           <div key={i} className="flex items-center justify-between border-b pb-2">
                             <div className="flex items-center">
                               <div
@@ -295,7 +346,10 @@ export default function DashboardPage() {
                               </div>
                               <div>
                                 <p className="text-sm font-medium">{transaction.category_name}</p>
-                                <p className="text-xs text-muted-foreground">{transaction.date}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {format(parseISO(transaction.date), "MMM dd, yyyy")}
+                                  {transaction.description && ` - ${transaction.description}`}
+                                </p>
                               </div>
                             </div>
                             <div
@@ -426,15 +480,15 @@ export default function DashboardPage() {
                 <CardTitle>Monthly Overview</CardTitle>
                 <CardDescription>Your income and expenses for the period</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="h-[300px]">
                 {isLoading ? (
-                  <div className="h-[300px] w-full flex items-center justify-center">
+                  <div className="h-full w-full flex items-center justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
                 ) : (
-                  <div className="chart-container">
+                  <div className="h-full">
                     <BarChart
-                      data={prepareChartData() || []}
+                      data={prepareChartData()}
                       index="date"
                       categories={["income", "expense"]}
                       colors={["emerald", "red"]}
@@ -450,13 +504,13 @@ export default function DashboardPage() {
                 <CardTitle>Income vs Expenses</CardTitle>
                 <CardDescription>Breakdown of your finances</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="h-[300px]">
                 {isLoading ? (
-                  <div className="h-[300px] w-full flex items-center justify-center">
+                  <div className="h-full w-full flex items-center justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
                 ) : (
-                  <div className="chart-container">
+                  <div className="h-full">
                     <PieChart
                       data={[
                         { name: "Income", value: dashboardData?.income_total || 0 },
@@ -476,15 +530,15 @@ export default function DashboardPage() {
                 <CardTitle>Financial Trends</CardTitle>
                 <CardDescription>Track your financial growth over time</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="h-[300px]">
                 {isLoading ? (
-                  <div className="h-[300px] w-full flex items-center justify-center">
+                  <div className="h-full w-full flex items-center justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
                 ) : (
-                  <div className="chart-container">
+                  <div className="h-full">
                     <LineChart
-                      data={prepareChartData() || []}
+                      data={prepareChartData()}
                       index="date"
                       categories={["net"]}
                       colors={["blue"]}

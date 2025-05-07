@@ -31,16 +31,21 @@ async function fetchAPI<T>(
     options.body = JSON.stringify(data)
   }
 
-  const response = await fetch(url, options)
+  try {
+    const response = await fetch(url, options)
 
-  // Handle non-2xx responses
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}))
-    throw new Error(errorData.detail || `API request failed with status ${response.status}`)
+    // Handle non-2xx responses
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.detail || `API request failed with status ${response.status}`)
+    }
+
+    // Parse JSON response
+    return (await response.json()) as T
+  } catch (error) {
+    console.error(`API Error (${endpoint}):`, error)
+    throw error
   }
-
-  // Parse JSON response
-  return (await response.json()) as T
 }
 
 // Types
@@ -137,6 +142,24 @@ export interface ReportData {
   daily_totals: Record<string, { income: number; expense: number; net: number }>
 }
 
+export interface DashboardData {
+  income_total: number
+  expense_total: number
+  balance: number
+  savings_rate: number
+  income_by_category: Record<string, number>
+  expenses_by_category: Record<string, number>
+  monthly_data: Record<string, { income: number; expense: number; net: number }>
+  recent_transactions: Array<{
+    id: number
+    type: "income" | "expense"
+    amount: number
+    date: string
+    category_name: string
+    description?: string
+  }>
+}
+
 // API functions
 export const api = {
   // Auth
@@ -145,7 +168,7 @@ export const api = {
     formData.append("username", username)
     formData.append("password", password)
 
-    const response = await fetch(`${API_BASE_URL}/users/token`, {
+    const response = await fetch(`${API_BASE_URL}/auth/token`, {
       method: "POST",
       body: formData,
     })
@@ -160,6 +183,15 @@ export const api = {
     return data
   },
 
+  async register(userData: {
+    username: string
+    email: string
+    password: string
+    full_name?: string
+  }): Promise<BaseResponse> {
+    return fetchAPI<BaseResponse>("/auth/register", "POST", userData)
+  },
+
   async logout(): Promise<void> {
     localStorage.removeItem("auth_token")
   },
@@ -169,15 +201,6 @@ export const api = {
     return fetchAPI<User>("/users/me")
   },
 
-  async createUser(userData: {
-    username: string
-    email: string
-    password: string
-    full_name?: string
-  }): Promise<BaseResponse> {
-    return fetchAPI<BaseResponse>("/users", "POST", userData)
-  },
-
   async updateUser(userData: {
     username?: string
     email?: string
@@ -185,6 +208,11 @@ export const api = {
     full_name?: string
   }): Promise<BaseResponse> {
     return fetchAPI<BaseResponse>("/users/me", "PUT", userData)
+  },
+
+  // Dashboard
+  async getDashboardData(period: "day" | "week" | "month" | "year" = "month"): Promise<DashboardData> {
+    return fetchAPI<DashboardData>(`/dashboard?period=${period}`)
   },
 
   // Income
@@ -222,23 +250,6 @@ export const api = {
     return fetchAPI<BaseResponse>(`/income/${id}`, "DELETE")
   },
 
-  async getIncomeTotal(filters?: { start_date?: string; end_date?: string; category_id?: number }): Promise<
-    BaseResponse<{ total: number }>
-  > {
-    let endpoint = "/income/total"
-    if (filters) {
-      const params = new URLSearchParams()
-      if (filters.start_date) params.append("start_date", filters.start_date)
-      if (filters.end_date) params.append("end_date", filters.end_date)
-      if (filters.category_id) params.append("category_id", filters.category_id.toString())
-
-      if (params.toString()) {
-        endpoint += `?${params.toString()}`
-      }
-    }
-    return fetchAPI<BaseResponse<{ total: number }>>(endpoint)
-  },
-
   // Expenses
   async getExpenses(filters?: { start_date?: string; end_date?: string; category_id?: number }): Promise<Expense[]> {
     let endpoint = "/expenses"
@@ -274,23 +285,6 @@ export const api = {
 
   async deleteExpense(id: number): Promise<BaseResponse> {
     return fetchAPI<BaseResponse>(`/expenses/${id}`, "DELETE")
-  },
-
-  async getExpenseTotal(filters?: { start_date?: string; end_date?: string; category_id?: number }): Promise<
-    BaseResponse<{ total: number }>
-  > {
-    let endpoint = "/expenses/total"
-    if (filters) {
-      const params = new URLSearchParams()
-      if (filters.start_date) params.append("start_date", filters.start_date)
-      if (filters.end_date) params.append("end_date", filters.end_date)
-      if (filters.category_id) params.append("category_id", filters.category_id.toString())
-
-      if (params.toString()) {
-        endpoint += `?${params.toString()}`
-      }
-    }
-    return fetchAPI<BaseResponse<{ total: number }>>(endpoint)
   },
 
   // Categories

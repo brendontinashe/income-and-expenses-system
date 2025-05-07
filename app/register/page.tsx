@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation"
 import { DollarSign, Loader2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { useAuth } from "@/lib/auth-context"
 
 export default function RegisterPage() {
   const [name, setName] = useState("")
@@ -22,6 +23,14 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const { register, isAuthenticated } = useAuth()
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push("/dashboard")
+    }
+  }, [isAuthenticated, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,29 +44,14 @@ export default function RegisterPage() {
     setIsLoading(true)
 
     try {
-      const response = await fetch("http://localhost:8000/api/auth/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          username,
-          email,
-          password,
-          full_name: name,
-        }),
+      await register({
+        username,
+        email,
+        password,
+        full_name: name,
       })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || `Registration failed with status ${response.status}`)
-      }
-
-      // Redirect to login on success
-      router.push("/login?registered=true")
     } catch (error: any) {
       setError(error.message || "Registration failed. Please try again.")
-      console.error("Registration failed:", error)
     } finally {
       setIsLoading(false)
     }

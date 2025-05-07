@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,7 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { DollarSign, Loader2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/lib/auth-context"
 
 export default function LoginPage() {
   const [username, setUsername] = useState("")
@@ -23,10 +23,26 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { toast } = useToast()
+  const { login, isAuthenticated } = useAuth()
 
   // Check if user just registered
   const justRegistered = searchParams.get("registered") === "true"
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push("/dashboard")
+    }
+  }, [isAuthenticated, router])
+
+  // Check for remembered user
+  useEffect(() => {
+    const rememberedUser = localStorage.getItem("remember_user")
+    if (rememberedUser) {
+      setUsername(rememberedUser)
+      setRememberMe(true)
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -34,24 +50,7 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const formData = new FormData()
-      formData.append("username", username)
-      formData.append("password", password)
-
-      const response = await fetch("http://localhost:8000/api/auth/token", {
-        method: "POST",
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.detail || `Login failed with status ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      // Store the token
-      localStorage.setItem("auth_token", data.access_token)
+      await login(username, password)
 
       // Store remember me preference
       if (rememberMe) {
@@ -59,30 +58,12 @@ export default function LoginPage() {
       } else {
         localStorage.removeItem("remember_user")
       }
-
-      // Redirect to dashboard on success
-      toast({
-        title: "Login successful",
-        description: "Welcome back to FinanceTrack!",
-      })
-
-      router.push("/dashboard")
     } catch (error: any) {
       setError(error.message || "Invalid username or password. Please try again.")
-      console.error("Login failed:", error)
     } finally {
       setIsLoading(false)
     }
   }
-
-  // Check for remembered user
-  useState(() => {
-    const rememberedUser = localStorage.getItem("remember_user")
-    if (rememberedUser) {
-      setUsername(rememberedUser)
-      setRememberMe(true)
-    }
-  })
 
   return (
     <div className="min-h-screen flex flex-col">
