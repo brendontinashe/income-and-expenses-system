@@ -2,41 +2,64 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DollarSign, Loader2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { useAuth } from "@/lib/auth-context"
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("")
+  const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [rememberMe, setRememberMe] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { login, isAuthenticated } = useAuth()
+
+  // Check if user just registered
+  const justRegistered = searchParams.get("registered") === "true"
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push("/dashboard")
+    }
+  }, [isAuthenticated, router])
+
+  // Check for remembered user
+  useEffect(() => {
+    const rememberedUser = localStorage.getItem("remember_user")
+    if (rememberedUser) {
+      setUsername(rememberedUser)
+      setRememberMe(true)
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setIsLoading(true)
 
-    // This would be replaced with actual API call
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await login(username, password)
 
-      // Redirect to dashboard on success
-      router.push("/dashboard")
-    } catch (error) {
-      setError("Invalid email or password. Please try again.")
-      console.error("Login failed:", error)
+      // Store remember me preference
+      if (rememberMe) {
+        localStorage.setItem("remember_user", username)
+      } else {
+        localStorage.removeItem("remember_user")
+      }
+    } catch (error: any) {
+      setError(error.message || "Invalid username or password. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -66,16 +89,22 @@ export default function LoginPage() {
                 </Alert>
               )}
 
+              {justRegistered && (
+                <Alert>
+                  <AlertDescription className="text-emerald-600">
+                    Registration successful! Please log in with your credentials.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="username">Username or Email</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="name@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   required
-                  autoComplete="email"
+                  autoComplete="username"
                   autoFocus
                 />
               </div>

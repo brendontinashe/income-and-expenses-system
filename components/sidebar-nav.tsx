@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Menu,
   X,
+  LogOut,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -30,6 +31,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { useAuth } from "@/lib/auth-context"
+import { Skeleton } from "@/components/ui/skeleton"
 
 interface SidebarNavProps {
   className?: string
@@ -39,12 +42,21 @@ export function SidebarNav({ className }: SidebarNavProps) {
   const pathname = usePathname()
   const [isCollapsed, setIsCollapsed] = React.useState(false)
   const [isMobileOpen, setIsMobileOpen] = React.useState(false)
+  const { user, logout, isLoading } = useAuth()
 
   const routes = [
     {
       href: "/dashboard",
       label: "Dashboard",
       active: pathname === "/dashboard",
+      icon: <Home className="h-5 w-5" />,
+      color: "text-slate-500",
+      bgColor: "bg-slate-100 dark:bg-slate-800",
+    },
+    {
+      href: "/",
+      label: "Home",
+      active: pathname === "/",
       icon: <Home className="h-5 w-5" />,
       color: "text-slate-500",
       bgColor: "bg-slate-100 dark:bg-slate-800",
@@ -124,6 +136,20 @@ export function SidebarNav({ className }: SidebarNavProps) {
   React.useEffect(() => {
     setIsMobileOpen(false)
   }, [pathname])
+
+  // Get user initials for avatar
+  const getUserInitials = () => {
+    if (!user) return "U"
+
+    if (user.full_name) {
+      const nameParts = user.full_name.split(" ")
+      if (nameParts.length >= 2) {
+        return `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase()
+      }
+      return user.full_name[0].toUpperCase()
+    }
+    return user.username[0].toUpperCase()
+  }
 
   return (
     <>
@@ -207,8 +233,17 @@ export function SidebarNav({ className }: SidebarNavProps) {
         <div className={cn("border-t p-4", isCollapsed ? "flex justify-center" : "")}>
           {isCollapsed ? (
             <Avatar className="h-9 w-9">
-              <AvatarImage src="/placeholder.svg?height=36&width=36&text=JD" alt="@johndoe" />
-              <AvatarFallback className="bg-indigo-600 text-white">JD</AvatarFallback>
+              {isLoading ? (
+                <Skeleton className="h-full w-full rounded-full" />
+              ) : (
+                <>
+                  <AvatarImage
+                    src={`https://ui-avatars.com/api/?name=${user?.full_name || user?.username}&background=random`}
+                    alt={user?.username || "User"}
+                  />
+                  <AvatarFallback className="bg-indigo-600 text-white">{getUserInitials()}</AvatarFallback>
+                </>
+              )}
             </Avatar>
           ) : (
             <div className="flex items-center justify-between">
@@ -216,12 +251,30 @@ export function SidebarNav({ className }: SidebarNavProps) {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="flex items-center gap-2 px-2">
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src="/placeholder.svg?height=32&width=32&text=JD" alt="@johndoe" />
-                      <AvatarFallback className="bg-indigo-600 text-white">JD</AvatarFallback>
+                      {isLoading ? (
+                        <Skeleton className="h-full w-full rounded-full" />
+                      ) : (
+                        <>
+                          <AvatarImage
+                            src={`https://ui-avatars.com/api/?name=${user?.full_name || user?.username}&background=random`}
+                            alt={user?.username || "User"}
+                          />
+                          <AvatarFallback className="bg-indigo-600 text-white">{getUserInitials()}</AvatarFallback>
+                        </>
+                      )}
                     </Avatar>
                     <div className="flex flex-col items-start text-sm">
-                      <span className="font-medium">John Doe</span>
-                      <span className="text-xs text-muted-foreground">Admin</span>
+                      {isLoading ? (
+                        <>
+                          <Skeleton className="h-4 w-20 mb-1" />
+                          <Skeleton className="h-3 w-12" />
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-medium">{user?.full_name || user?.username}</span>
+                          <span className="text-xs text-muted-foreground">Account</span>
+                        </>
+                      )}
                     </div>
                   </Button>
                 </DropdownMenuTrigger>
@@ -239,10 +292,9 @@ export function SidebarNav({ className }: SidebarNavProps) {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem>
-                    <Link href="/login" className="flex w-full">
-                      Log out
-                    </Link>
+                  <DropdownMenuItem onClick={logout} className="text-red-500 focus:text-red-500">
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Log out
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

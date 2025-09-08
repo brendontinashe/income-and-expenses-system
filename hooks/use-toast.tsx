@@ -65,7 +65,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             title={toast.title}
             description={toast.description}
             type={toast.type}
-            action={toast.action}
+            onClose={() => dismiss(toast.id)}
           />
         ))}
       </div>

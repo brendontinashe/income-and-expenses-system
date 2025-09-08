@@ -58,7 +58,17 @@
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.6",
     "zod": "^3.24.1",
-    "@tanstack/react-table": "latest"
+    "@tanstack/react-table": "latest",
+    "@visx/axis": "latest",
+    "@visx/grid": "latest",
+    "@visx/group": "latest",
+    "@visx/scale": "latest",
+    "@visx/shape": "latest",
+    "@visx/tooltip": "latest",
+    "@visx/event": "latest",
+    "@visx/legend": "latest",
+    "@visx/curve": "latest",
+    "@visx/text": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

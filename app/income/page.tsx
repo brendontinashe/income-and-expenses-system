@@ -1,281 +1,281 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowUpRight, Plus, Search, Download, Filter, Calendar, Eye, Edit, Trash2 } from "lucide-react"
-import Link from "next/link"
-import { Badge } from "@/components/ui/badge"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { Separator } from "@/components/ui/separator"
+import { CalendarIcon, Plus, Trash2, PencilIcon, ArrowUpDown } from "lucide-react"
+import { format } from "date-fns"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { cn } from "@/lib/utils"
+import { useToast } from "@/hooks/use-toast"
+import api, { type Income, type Category } from "@/lib/api"
 
 export default function IncomePage() {
-  // Mock data for income entries
-  const incomeEntries = [
-    {
-      id: 1,
-      date: "2023-04-01",
-      category: "Salary",
-      subcategory: "Monthly",
-      description: "April Salary",
-      amount: 5000,
-      status: "Received",
-    },
-    {
-      id: 2,
-      date: "2023-04-10",
-      category: "Freelance",
-      subcategory: "Web Development",
-      description: "Client Project",
-      amount: 800,
-      status: "Received",
-    },
-    {
-      id: 3,
-      date: "2023-04-15",
-      category: "Investment",
-      subcategory: "Dividends",
-      description: "Stock Dividends",
-      amount: 350,
-      status: "Received",
-    },
-    {
-      id: 4,
-      date: "2023-04-20",
-      category: "Rental",
-      subcategory: "Property",
-      description: "Apartment Rent",
-      amount: 1200,
-      status: "Pending",
-    },
-    {
-      id: 5,
-      date: "2023-04-25",
-      category: "Other",
-      subcategory: "Refund",
-      description: "Tax Refund",
-      amount: 750,
-      status: "Received",
-    },
-  ]
+  const { toast } = useToast()
+  const router = useRouter()
+  const [incomes, setIncomes] = useState<Income[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [sortField, setSortField] = useState<keyof Income>("date")
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
+  const [filterCategory, setFilterCategory] = useState<number | "all">("all")
+  const [dateRange, setDateRange] = useState<{
+    start: Date | null
+    end: Date | null
+  }>({
+    start: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    end: new Date(),
+  })
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true)
+
+        // Fetch categories first
+        const categoriesData = await api.getCategories("income")
+        setCategories(categoriesData)
+
+        // Fetch incomes with filters
+        const filters: any = {}
+        if (dateRange.start) filters.start_date = dateRange.start.toISOString().split("T")[0]
+        if (dateRange.end) filters.end_date = dateRange.end.toISOString().split("T")[0]
+        if (filterCategory !== "all") filters.category_id = filterCategory
+
+        const incomesData = await api.getIncomes(filters)
+        setIncomes(incomesData)
+      } catch (error) {
+        console.error("Error fetching data:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load income data. Please try again.",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [toast, dateRange, filterCategory])
+
+  const handleAddIncome = () => {
+    router.push("/income/add")
+  }
+
+  const handleEditIncome = (id: number) => {
+    router.push(`/income/edit/${id}`)
+  }
+
+  const handleDeleteIncome = async (id: number) => {
+    if (!confirm("Are you sure you want to delete this income record?")) return
+
+    try {
+      await api.deleteIncome(id)
+      setIncomes(incomes.filter((income) => income.id !== id))
+      toast({
+        title: "Success",
+        description: "Income record deleted successfully",
+      })
+    } catch (error) {
+      console.error("Error deleting income:", error)
+      toast({
+        title: "Error",
+        description: "Failed to delete income record. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleSort = (field: keyof Income) => {
+    if (field === sortField) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
+    } else {
+      setSortField(field)
+      setSortDirection("asc")
+    }
+  }
+
+  const sortedIncomes = [...incomes].sort((a, b) => {
+    if (sortField === "amount") {
+      return sortDirection === "asc" ? a.amount - b.amount : b.amount - a.amount
+    } else if (sortField === "date") {
+      return sortDirection === "asc"
+        ? new Date(a.date).getTime() - new Date(b.date).getTime()
+        : new Date(b.date).getTime() - new Date(a.date).getTime()
+    } else {
+      return 0
+    }
+  })
+
+  const totalIncome = incomes.reduce((sum, income) => sum + income.amount, 0)
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between gap-4 md:items-center">
+      <div className="flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Income</h2>
-          <p className="text-muted-foreground">Manage and track your income sources</p>
+          <p className="text-muted-foreground">Manage your income records</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline">
-            <Download className="mr-2 h-4 w-4" /> Export
-          </Button>
-          <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
-            <Link href="/income/add">
-              <Plus className="mr-2 h-4 w-4" /> Add Income
-            </Link>
-          </Button>
-        </div>
+        <Button onClick={handleAddIncome} className="flex items-center gap-2">
+          <Plus size={16} />
+          Add Income
+        </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-900/30 border-0 shadow-md">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Income (This Month)</CardTitle>
-            <ArrowUpRight className="h-4 w-4 text-emerald-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">$8,100.00</div>
-            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">+12.5% from last month</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-900/30 border-0 shadow-md">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Average Income</CardTitle>
-            <Calendar className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">$1,620.00</div>
-            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Per income entry</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950/40 dark:to-violet-900/30 border-0 shadow-md">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Income</CardTitle>
-            <Badge
-              variant="outline"
-              className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800"
-            >
-              1 Pending
-            </Badge>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">$1,200.00</div>
-            <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">Expected within 7 days</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-900/30 border-0 shadow-md">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Year-to-Date</CardTitle>
-            <ArrowUpRight className="h-4 w-4 text-amber-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">$32,400.00</div>
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">+8.3% from last year</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="border-0 shadow-md">
+      <Card>
         <CardHeader>
-          <CardTitle>Income Entries</CardTitle>
-          <CardDescription>Manage your income entries and categories</CardDescription>
+          <CardTitle>Income Summary</CardTitle>
+          <CardDescription>
+            Total income for the selected period:{" "}
+            <span className="font-semibold text-green-600">${totalIncome.toFixed(2)}</span>
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col md:flex-row gap-4 mb-6">
-            <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input type="search" placeholder="Search income entries..." className="pl-8" />
+          <div className="flex flex-col md:flex-row gap-4 mb-4">
+            <div className="flex-1 space-y-2">
+              <Label>Date Range</Label>
+              <div className="flex gap-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !dateRange.start && "text-muted-foreground",
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {dateRange.start ? format(dateRange.start, "PPP") : "Start date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={dateRange.start || undefined}
+                      onSelect={(date) => setDateRange({ ...dateRange, start: date })}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !dateRange.end && "text-muted-foreground",
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {dateRange.end ? format(dateRange.end, "PPP") : "End date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={dateRange.end || undefined}
+                      onSelect={(date) => setDateRange({ ...dateRange, end: date })}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Select defaultValue="all">
-                <SelectTrigger className="w-[180px]">
-                  <Filter className="mr-2 h-4 w-4" />
-                  <SelectValue placeholder="Category" />
+            <div className="w-full md:w-1/3 space-y-2">
+              <Label>Category</Label>
+              <Select
+                value={filterCategory.toString()}
+                onValueChange={(value) => setFilterCategory(value === "all" ? "all" : Number.parseInt(value))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Categories" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Categories</SelectItem>
-                  <SelectItem value="salary">Salary</SelectItem>
-                  <SelectItem value="freelance">Freelance</SelectItem>
-                  <SelectItem value="investment">Investment</SelectItem>
-                  <SelectItem value="rental">Rental</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select defaultValue="current">
-                <SelectTrigger className="w-[180px]">
-                  <Calendar className="mr-2 h-4 w-4" />
-                  <SelectValue placeholder="Time Period" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="current">Current Month</SelectItem>
-                  <SelectItem value="last">Last Month</SelectItem>
-                  <SelectItem value="quarter">Last Quarter</SelectItem>
-                  <SelectItem value="year">This Year</SelectItem>
-                  <SelectItem value="custom">Custom Range</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id.toString()}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          <div className="rounded-md border overflow-hidden">
-            <Table>
-              <TableHeader className="bg-muted/50">
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Subcategory</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {incomeEntries.map((entry) => (
-                  <TableRow key={entry.id} className="hover:bg-muted/50">
-                    <TableCell className="font-medium">{entry.date}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className="bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
-                      >
-                        {entry.category}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{entry.subcategory}</TableCell>
-                    <TableCell>{entry.description}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={entry.status === "Received" ? "success" : "outline"}
-                        className={
-                          entry.status === "Pending"
-                            ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800"
-                            : ""
-                        }
-                      >
-                        {entry.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-medium text-emerald-600 dark:text-emerald-400">
-                      ${entry.amount.toFixed(2)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <span className="sr-only">Open menu</span>
-                            <svg
-                              width="15"
-                              height="15"
-                              viewBox="0 0 15 15"
-                              fill="none"
-                              xmlns="http://www.w3.org/2000/svg"
-                              className="h-4 w-4"
-                            >
-                              <path
-                                d="M3.625 7.5C3.625 8.12132 3.12132 8.625 2.5 8.625C1.87868 8.625 1.375 8.12132 1.375 7.5C1.375 6.87868 1.87868 6.375 2.5 6.375C3.12132 6.375 3.625 6.87868 3.625 7.5ZM8.625 7.5C8.625 8.12132 8.12132 8.625 7.5 8.625C6.87868 8.625 6.375 8.12132 6.375 7.5C6.375 6.87868 6.87868 6.375 7.5 6.375C8.12132 6.375 8.625 6.87868 8.625 7.5ZM13.625 7.5C13.625 8.12132 13.1213 8.625 12.5 8.625C11.8787 8.625 11.375 8.12132 11.375 7.5C11.375 6.87868 11.8787 6.375 12.5 6.375C13.1213 6.375 13.625 6.87868 13.625 7.5Z"
-                                fill="currentColor"
-                                fillRule="evenodd"
-                                clipRule="evenodd"
-                              ></path>
-                            </svg>
+          <Separator className="my-4" />
+
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : sortedIncomes.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No income records found for the selected filters.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-3 px-4 font-medium">
+                      <button className="flex items-center gap-1" onClick={() => handleSort("date")}>
+                        Date
+                        <ArrowUpDown size={14} />
+                      </button>
+                    </th>
+                    <th className="text-left py-3 px-4 font-medium">Category</th>
+                    <th className="text-left py-3 px-4 font-medium">Description</th>
+                    <th className="text-left py-3 px-4 font-medium">
+                      <button className="flex items-center gap-1" onClick={() => handleSort("amount")}>
+                        Amount
+                        <ArrowUpDown size={14} />
+                      </button>
+                    </th>
+                    <th className="text-right py-3 px-4 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedIncomes.map((income) => (
+                    <tr key={income.id} className="border-b hover:bg-muted/50">
+                      <td className="py-3 px-4">{format(new Date(income.date), "MMM d, yyyy")}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: income.category?.color || "#808080" }}
+                          ></div>
+                          {income.category?.name || "Unknown"}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">{income.description || "-"}</td>
+                      <td className="py-3 px-4 font-medium text-green-600">${income.amount.toFixed(2)}</td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="icon" onClick={() => handleEditIncome(income.id)}>
+                            <PencilIcon size={16} />
                           </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuItem>
-                            <Eye className="mr-2 h-4 w-4" /> View Details
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Edit className="mr-2 h-4 w-4" /> Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-red-600 dark:text-red-400">
-                            <Trash2 className="mr-2 h-4 w-4" /> Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          <div className="flex items-center justify-between mt-4">
-            <div className="text-sm text-muted-foreground">Showing 5 of 5 entries</div>
-            <div className="flex items-center space-x-2">
-              <Button variant="outline" size="sm" disabled>
-                Previous
-              </Button>
-              <Button variant="outline" size="sm" className="bg-primary text-primary-foreground">
-                1
-              </Button>
-              <Button variant="outline" size="sm" disabled>
-                Next
-              </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteIncome(income.id)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 size={16} />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>

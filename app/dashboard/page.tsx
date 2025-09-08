@@ -9,70 +9,103 @@ import {
   DollarSign,
   Percent,
   CreditCard,
-  TrendingUp,
   Calendar,
   AlertCircle,
+  Loader2,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import Image from "next/image"
-
-// Mock chart components
-const BarChart = () => (
-  <div className="h-[300px] w-full flex items-center justify-center border rounded-md bg-muted/30">
-    <TrendingUp className="h-8 w-8 text-muted-foreground" />
-  </div>
-)
-
-const LineChart = () => (
-  <div className="h-[300px] w-full flex items-center justify-center border rounded-md bg-muted/30">
-    <TrendingUp className="h-8 w-8 text-muted-foreground" />
-  </div>
-)
-
-const PieChart = () => (
-  <div className="h-[300px] w-full flex items-center justify-center border rounded-md bg-muted/30">
-    <TrendingUp className="h-8 w-8 text-muted-foreground" />
-  </div>
-)
+import { useToast } from "@/hooks/use-toast"
+import { BarChart, LineChart, PieChart } from "@/components/ui/chart"
+import { api, type DashboardData } from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
+import { format, parseISO, isAfter, addDays } from "date-fns"
 
 export default function DashboardPage() {
+  const { toast } = useToast()
+  const { user } = useAuth()
   const [isLoading, setIsLoading] = useState(true)
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
+  const [period, setPeriod] = useState("month")
 
   useEffect(() => {
-    // Simulate loading data without showing toast
-    const timer = setTimeout(() => {
+    fetchDashboardData()
+  }, [period])
+
+  const fetchDashboardData = async () => {
+    setIsLoading(true)
+    try {
+      const data = await api.getDashboardData(period as any)
+      setDashboardData(data)
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load dashboard data. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
       setIsLoading(false)
-    }, 1000)
+    }
+  }
 
-    return () => clearTimeout(timer)
-  }, [])
+  // Find upcoming rent payment
+  const findUpcomingRentPayment = () => {
+    if (!dashboardData?.recent_transactions) return null
 
-  // Mock data for recent transactions
-  const recentTransactions = [
-    { type: "income", category: "Salary", amount: 5000, date: "2023-04-01" },
-    { type: "expense", category: "Rent", amount: 1200, date: "2023-04-02" },
-    { type: "expense", category: "Groceries", amount: 250, date: "2023-04-05" },
-    { type: "income", category: "Freelance", amount: 800, date: "2023-04-10" },
-    { type: "expense", category: "Utilities", amount: 180, date: "2023-04-15" },
-  ]
+    const rentTransactions = dashboardData.recent_transactions.filter(
+      (t) => t.type === "expense" && t.description?.toLowerCase().includes("rent"),
+    )
 
-  // Mock data for income categories
-  const incomeCategories = [
-    { name: "Salary", percentage: 80 },
-    { name: "Freelance", percentage: 15 },
-    { name: "Investments", percentage: 5 },
-  ]
+    if (rentTransactions.length === 0) return null
 
-  // Mock data for expense categories
-  const expenseCategories = [
-    { name: "Housing", percentage: 40 },
-    { name: "Food", percentage: 25 },
-    { name: "Transportation", percentage: 15 },
-    { name: "Utilities", percentage: 10 },
-    { name: "Entertainment", percentage: 10 },
-  ]
+    // Get the most recent rent payment
+    const lastRentPayment = rentTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+
+    // Predict next payment (30 days after the last one)
+    const lastPaymentDate = parseISO(lastRentPayment.date)
+    const predictedNextPayment = addDays(lastPaymentDate, 30)
+
+    // If the predicted payment is in the next 7 days, show alert
+    const isUpcoming =
+      isAfter(predictedNextPayment, new Date()) && isAfter(addDays(new Date(), 7), predictedNextPayment)
+
+    if (isUpcoming) {
+      return {
+        amount: lastRentPayment.amount,
+        dueDate: format(predictedNextPayment, "MMM dd, yyyy"),
+      }
+    }
+
+    return null
+  }
+
+  const upcomingRent = findUpcomingRentPayment()
+
+  // Prepare chart data
+  const prepareChartData = () => {
+    if (!dashboardData || !dashboardData.monthly_data) return []
+
+    // Convert the monthly data object to an array for the chart
+    const chartData = Object.entries(dashboardData.monthly_data).map(([date, values]: [string, any]) => ({
+      date: format(parseISO(date), "MMM dd"),
+      income: values.income,
+      expense: values.expense,
+      net: values.net,
+    }))
+
+    // Sort by date
+    chartData.sort((a, b) => {
+      const dateA = parseISO(a.date)
+      const dateB = parseISO(b.date)
+      return dateA.getTime() - dateB.getTime()
+    })
+
+    return chartData
+  }
 
   // Skeleton loader for cards
   const CardSkeleton = () => (
@@ -86,7 +119,10 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between gap-4 md:items-center">
-        <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+          {user && <p className="text-muted-foreground">Welcome back, {user.full_name || user.username}</p>}
+        </div>
         <div className="flex gap-2">
           <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
             <Link href="/income/add">Add Income</Link>
@@ -101,29 +137,67 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
-        <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-        <AlertTitle className="text-amber-800 dark:text-amber-300">Upcoming Payment</AlertTitle>
-        <AlertDescription className="text-amber-700 dark:text-amber-400">
-          You have a rent payment of $1,200 due in 3 days.{" "}
-          <Link
-            href="/expenses/add"
-            className="font-medium underline underline-offset-4 text-amber-800 dark:text-amber-300"
-          >
-            Record payment
-          </Link>
-        </AlertDescription>
-      </Alert>
+      {upcomingRent && (
+        <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
+          <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <AlertTitle className="text-amber-800 dark:text-amber-300">Upcoming Payment</AlertTitle>
+          <AlertDescription className="text-amber-700 dark:text-amber-400">
+            You have a rent payment of ${upcomingRent.amount.toFixed(2)} due on {upcomingRent.dueDate}.{" "}
+            <Link
+              href="/expenses/add"
+              className="font-medium underline underline-offset-4 text-amber-800 dark:text-amber-300"
+            >
+              Record payment
+            </Link>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="flex flex-wrap gap-4 mb-4">
+        <Button
+          variant={period === "month" ? "default" : "outline"}
+          onClick={() => setPeriod("month")}
+          size="sm"
+          className="rounded-full"
+        >
+          This Month
+        </Button>
+        <Button
+          variant={period === "quarter" ? "default" : "outline"}
+          onClick={() => setPeriod("quarter")}
+          size="sm"
+          className="rounded-full"
+        >
+          This Quarter
+        </Button>
+        <Button
+          variant={period === "year" ? "default" : "outline"}
+          onClick={() => setPeriod("year")}
+          size="sm"
+          className="rounded-full"
+        >
+          This Year
+        </Button>
+      </div>
 
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="bg-slate-100 dark:bg-slate-800">
-          <TabsTrigger value="overview" className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700">
+        <TabsList className="bg-slate-100 dark:bg-slate-800 p-1 rounded-full">
+          <TabsTrigger
+            value="overview"
+            className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 rounded-full"
+          >
             Overview
           </TabsTrigger>
-          <TabsTrigger value="analytics" className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700">
+          <TabsTrigger
+            value="analytics"
+            className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 rounded-full"
+          >
             Analytics
           </TabsTrigger>
-          <TabsTrigger value="calendar" className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700">
+          <TabsTrigger
+            value="calendar"
+            className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 rounded-full"
+          >
             Calendar
           </TabsTrigger>
         </TabsList>
@@ -139,12 +213,12 @@ export default function DashboardPage() {
                   <CardSkeleton />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold">$45,231.89</div>
+                    <div className="text-2xl font-bold">${dashboardData?.income_total.toFixed(2) || "0.00"}</div>
                     <p className="text-xs text-muted-foreground">
                       <span className="text-emerald-600 dark:text-emerald-500 flex items-center">
-                        +20.1% <ArrowUpRight className="h-4 w-4 ml-1" />
+                        <TrendingUp className="h-4 w-4 mr-1" />
                       </span>{" "}
-                      from last month
+                      {period === "month" ? "this month" : period === "quarter" ? "this quarter" : "this year"}
                     </p>
                   </>
                 )}
@@ -160,12 +234,12 @@ export default function DashboardPage() {
                   <CardSkeleton />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold">$12,234.59</div>
+                    <div className="text-2xl font-bold">${dashboardData?.expense_total.toFixed(2) || "0.00"}</div>
                     <p className="text-xs text-muted-foreground">
                       <span className="text-red-600 dark:text-red-500 flex items-center">
-                        +4.3% <ArrowUpRight className="h-4 w-4 ml-1" />
+                        <TrendingUp className="h-4 w-4 mr-1" />
                       </span>{" "}
-                      from last month
+                      {period === "month" ? "this month" : period === "quarter" ? "this quarter" : "this year"}
                     </p>
                   </>
                 )}
@@ -181,12 +255,22 @@ export default function DashboardPage() {
                   <CardSkeleton />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold">$32,997.30</div>
+                    <div className="text-2xl font-bold">${dashboardData?.balance.toFixed(2) || "0.00"}</div>
                     <p className="text-xs text-muted-foreground">
-                      <span className="text-emerald-600 dark:text-emerald-500 flex items-center">
-                        +10.2% <ArrowUpRight className="h-4 w-4 ml-1" />
+                      <span
+                        className={`${dashboardData?.balance >= 0 ? "text-emerald-600 dark:text-emerald-500" : "text-red-600 dark:text-red-500"} flex items-center`}
+                      >
+                        {dashboardData?.balance >= 0 ? (
+                          <TrendingUp className="h-4 w-4 mr-1" />
+                        ) : (
+                          <TrendingDown className="h-4 w-4 mr-1" />
+                        )}
+                        {Math.abs(((dashboardData?.balance || 0) / (dashboardData?.income_total || 1)) * 100).toFixed(
+                          1,
+                        )}
+                        %
                       </span>{" "}
-                      from last month
+                      of income
                     </p>
                   </>
                 )}
@@ -202,12 +286,18 @@ export default function DashboardPage() {
                   <CardSkeleton />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold">73%</div>
+                    <div className="text-2xl font-bold">{dashboardData?.savings_rate.toFixed(0) || "0"}%</div>
                     <p className="text-xs text-muted-foreground">
-                      <span className="text-emerald-600 dark:text-emerald-500 flex items-center">
-                        +5.2% <ArrowUpRight className="h-4 w-4 ml-1" />
+                      <span
+                        className={`${dashboardData?.savings_rate >= 0 ? "text-emerald-600 dark:text-emerald-500" : "text-red-600 dark:text-red-500"} flex items-center`}
+                      >
+                        {dashboardData?.savings_rate >= 0 ? (
+                          <TrendingUp className="h-4 w-4 mr-1" />
+                        ) : (
+                          <TrendingDown className="h-4 w-4 mr-1" />
+                        )}
                       </span>{" "}
-                      from last month
+                      of income saved
                     </p>
                   </>
                 )}
@@ -238,37 +328,56 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {recentTransactions.map((transaction, i) => (
-                      <div key={i} className="flex items-center justify-between border-b pb-2">
-                        <div className="flex items-center">
-                          <div
-                            className={`mr-4 rounded-full p-2 ${
-                              transaction.type === "income" ? "income-bg" : "expense-bg"
-                            }`}
-                          >
-                            {transaction.type === "income" ? (
-                              <ArrowUpRight className="h-4 w-4 income-text" />
-                            ) : (
-                              <ArrowDownRight className="h-4 w-4 expense-text" />
-                            )}
+                    {dashboardData?.recent_transactions?.length > 0 ? (
+                      <>
+                        {dashboardData.recent_transactions.map((transaction, i) => (
+                          <div key={i} className="flex items-center justify-between border-b pb-2">
+                            <div className="flex items-center">
+                              <div
+                                className={`mr-4 rounded-full p-2 ${
+                                  transaction.type === "income" ? "income-bg" : "expense-bg"
+                                }`}
+                              >
+                                {transaction.type === "income" ? (
+                                  <ArrowUpRight className="h-4 w-4 income-text" />
+                                ) : (
+                                  <ArrowDownRight className="h-4 w-4 expense-text" />
+                                )}
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium">{transaction.category_name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {format(parseISO(transaction.date), "MMM dd, yyyy")}
+                                  {transaction.description && ` - ${transaction.description}`}
+                                </p>
+                              </div>
+                            </div>
+                            <div
+                              className={`text-sm font-medium ${
+                                transaction.type === "income" ? "income-text" : "expense-text"
+                              }`}
+                            >
+                              {transaction.type === "income" ? "+" : "-"}${transaction.amount.toFixed(2)}
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm font-medium">{transaction.category}</p>
-                            <p className="text-xs text-muted-foreground">{transaction.date}</p>
-                          </div>
-                        </div>
-                        <div
-                          className={`text-sm font-medium ${
-                            transaction.type === "income" ? "income-text" : "expense-text"
-                          }`}
-                        >
-                          {transaction.type === "income" ? "+" : "-"}${transaction.amount.toFixed(2)}
+                        ))}
+                        <Button variant="outline" size="sm" className="w-full" asChild>
+                          <Link href="/reports">View all transactions</Link>
+                        </Button>
+                      </>
+                    ) : (
+                      <div className="text-center py-8">
+                        <p className="text-muted-foreground">No transactions found</p>
+                        <div className="mt-4 flex gap-2 justify-center">
+                          <Button asChild size="sm" variant="outline">
+                            <Link href="/income/add">Add Income</Link>
+                          </Button>
+                          <Button asChild size="sm" variant="outline">
+                            <Link href="/expenses/add">Add Expense</Link>
+                          </Button>
                         </div>
                       </div>
-                    ))}
-                    <Button variant="outline" size="sm" className="w-full" asChild>
-                      <Link href="/reports">View all transactions</Link>
-                    </Button>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -314,37 +423,49 @@ export default function DashboardPage() {
                   <div className="space-y-4">
                     <div>
                       <h4 className="text-sm font-medium mb-2">Income</h4>
-                      {incomeCategories.map((category, i) => (
-                        <div key={i} className="mb-2">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm">{category.name}</span>
-                            <span className="text-sm">{category.percentage}%</span>
-                          </div>
-                          <div className="w-full bg-muted rounded-full h-2">
-                            <div
-                              className="bg-emerald-500 h-2 rounded-full"
-                              style={{ width: `${category.percentage}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                      ))}
+                      {Object.entries(dashboardData?.income_by_category || {}).length > 0 ? (
+                        Object.entries(dashboardData?.income_by_category || {}).map(
+                          ([category, amount]: [string, any], i) => (
+                            <div key={i} className="mb-2">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-sm">{category}</span>
+                                <span className="text-sm">${amount.toFixed(2)}</span>
+                              </div>
+                              <div className="w-full bg-muted rounded-full h-2">
+                                <div
+                                  className="bg-emerald-500 h-2 rounded-full"
+                                  style={{ width: `${(amount / dashboardData?.income_total) * 100}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          ),
+                        )
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No income data available</p>
+                      )}
                     </div>
                     <div>
                       <h4 className="text-sm font-medium mb-2">Expenses</h4>
-                      {expenseCategories.map((category, i) => (
-                        <div key={i} className="mb-2">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm">{category.name}</span>
-                            <span className="text-sm">{category.percentage}%</span>
-                          </div>
-                          <div className="w-full bg-muted rounded-full h-2">
-                            <div
-                              className="bg-red-500 h-2 rounded-full"
-                              style={{ width: `${category.percentage}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                      ))}
+                      {Object.entries(dashboardData?.expenses_by_category || {}).length > 0 ? (
+                        Object.entries(dashboardData?.expenses_by_category || {}).map(
+                          ([category, amount]: [string, any], i) => (
+                            <div key={i} className="mb-2">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-sm">{category}</span>
+                                <span className="text-sm">${amount.toFixed(2)}</span>
+                              </div>
+                              <div className="w-full bg-muted rounded-full h-2">
+                                <div
+                                  className="bg-red-500 h-2 rounded-full"
+                                  style={{ width: `${(amount / dashboardData?.expense_total) * 100}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          ),
+                        )
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No expense data available</p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -357,17 +478,25 @@ export default function DashboardPage() {
             <Card className="col-span-2 dashboard-card">
               <CardHeader>
                 <CardTitle>Monthly Overview</CardTitle>
-                <CardDescription>Your income and expenses for the past 6 months</CardDescription>
+                <CardDescription>Your income and expenses for the period</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="relative h-[300px] w-full">
-                  <Image
-                    src="/placeholder.svg?height=300&width=600&text=Monthly+Overview+Chart"
-                    alt="Monthly Overview Chart"
-                    fill
-                    className="object-contain"
-                  />
-                </div>
+              <CardContent className="h-[300px]">
+                {isLoading ? (
+                  <div className="h-full w-full flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <div className="h-full">
+                    <BarChart
+                      data={prepareChartData()}
+                      index="date"
+                      categories={["income", "expense"]}
+                      colors={["emerald", "red"]}
+                      valueFormatter={(value) => `$${value.toFixed(2)}`}
+                      yAxisWidth={60}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
             <Card className="dashboard-card">
@@ -375,15 +504,25 @@ export default function DashboardPage() {
                 <CardTitle>Income vs Expenses</CardTitle>
                 <CardDescription>Breakdown of your finances</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="relative h-[300px] w-full">
-                  <Image
-                    src="/placeholder.svg?height=300&width=300&text=Pie+Chart"
-                    alt="Income vs Expenses Pie Chart"
-                    fill
-                    className="object-contain"
-                  />
-                </div>
+              <CardContent className="h-[300px]">
+                {isLoading ? (
+                  <div className="h-full w-full flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <div className="h-full">
+                    <PieChart
+                      data={[
+                        { name: "Income", value: dashboardData?.income_total || 0 },
+                        { name: "Expenses", value: dashboardData?.expense_total || 0 },
+                      ]}
+                      index="name"
+                      valueFormatter={(value) => `$${value.toFixed(2)}`}
+                      category="value"
+                      colors={["emerald", "red"]}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
             <Card className="col-span-3 dashboard-card">
@@ -391,15 +530,23 @@ export default function DashboardPage() {
                 <CardTitle>Financial Trends</CardTitle>
                 <CardDescription>Track your financial growth over time</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="relative h-[300px] w-full">
-                  <Image
-                    src="/placeholder.svg?height=300&width=900&text=Financial+Trends+Chart"
-                    alt="Financial Trends Chart"
-                    fill
-                    className="object-contain"
-                  />
-                </div>
+              <CardContent className="h-[300px]">
+                {isLoading ? (
+                  <div className="h-full w-full flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <div className="h-full">
+                    <LineChart
+                      data={prepareChartData()}
+                      index="date"
+                      categories={["net"]}
+                      colors={["blue"]}
+                      valueFormatter={(value) => `$${value.toFixed(2)}`}
+                      yAxisWidth={60}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
